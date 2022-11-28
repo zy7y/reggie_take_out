@@ -7,6 +7,7 @@ import com.zy7y.reggie_take_out.service.UserService;
 import com.zy7y.reggie_take_out.utils.ValidateCodeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.servlet.http.HttpSession;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 移动端
@@ -27,11 +29,16 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RedisTemplate redisTemplate;
+
     @PostMapping("/sendMsg")
     public R<String> sendMsg(@RequestBody User user, HttpSession session){
         if (user.getPhone() != null){
             String code = ValidateCodeUtils.generateValidateCode4String(4);
-            session.setAttribute(user.getPhone(), code);
+//            session.setAttribute(user.getPhone(), code);
+            // redis 缓存5分钟
+            redisTemplate.opsForValue().set(user.getPhone(), code, 5, TimeUnit.MINUTES);
             return R.success("验证码: " + code);
         }
         return R.error("短信发送失败");
@@ -41,7 +48,9 @@ public class UserController {
     public R<String> login(@RequestBody Map<String, String> map, HttpSession session){
         String phone = map.get("phone");
         String code = map.get("code");
-        if (!session.getAttribute(phone).equals(code)){
+        String codeSave = (String) redisTemplate.opsForValue().get(phone);
+        assert codeSave != null;
+        if (!codeSave.equals(code)){
             return R.error("验证码错误");
         }
         // 查询是否存在用户
